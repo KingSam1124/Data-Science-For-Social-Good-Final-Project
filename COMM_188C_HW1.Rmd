@@ -1,0 +1,142 @@
+---
+title: "COMM 188C HW2"
+author: "Sam Reade"
+date: "2025-05-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "~/Desktop/COMM 188C")
+```
+
+# Loading necessary libraries: 
+
+```{r}
+
+library(text2vec)
+library(rvest)
+library(dplyr)
+library(httr)
+library(stringr)
+library(tidytext)
+library(tm)
+library(quanteda)
+library(textdata)
+library(igraph)
+library(ggplot2)
+library(wordcloud)
+library(tidyverse)
+library(slam)
+library(jsonlite)
+
+```
+
+# Scraping title and first paragraph: 
+
+```{r}
+
+
+# Define the categories and their corresponding Wikipedia URLs
+categories <- list(
+  Sports = "https://en.wikipedia.org/wiki/Category:Sports",
+  Technology = "https://en.wikipedia.org/wiki/Category:Technology",
+  History = "https://en.wikipedia.org/wiki/Category:History",
+  Politics = "https://en.wikipedia.org/wiki/Category:Politics"
+)
+
+# Function to extract article URLs from a category page
+get_article_urls <- function(category_url, num_articles = 50, retries = 3) {
+  # Retry mechanism in case of failure
+  for (i in 1:retries) {
+    tryCatch({
+      # Read the category page
+      category_page <- read_html(category_url)
+      
+      # Extract links to articles within the category
+      article_links <- category_page %>%
+        html_nodes(".mw-category-group a") %>%
+        html_attr("href")
+      
+      # Construct the full URLs for the articles
+      full_urls <- paste0("https://en.wikipedia.org", article_links)
+      
+      # Return the first 'num_articles' URLs
+      return(unique(full_urls)[1:num_articles])
+    }, error = function(e) {
+      # Print error message and retry if possible
+      message("Error in connection: ", e$message, " - Retrying (", i, "/", retries, ")")
+      Sys.sleep(2)  # Wait for 2 seconds before retrying
+    })
+  }
+  
+  # If all retries fail, return an empty vector
+  message("Failed to retrieve data after ", retries, " attempts.")
+  return(character(0))  # Return an empty vector if all retries fail
+}
+
+# Function to extract the title and first paragraph from a Wikipedia page
+get_wiki_data <- function(url, retries = 3) {
+  # Retry mechanism in case of failure
+  for (i in 1:retries) {
+    tryCatch({
+      # Read the webpage
+      page <- read_html(url)
+      
+      # Extract the title (h1)
+      title <- page %>%
+        html_nodes("h1") %>%
+        html_text()
+      
+      # Extract the first paragraph (p)
+      paragraph <- page %>%
+        html_nodes("p") %>%
+        html_text() %>%
+        .[1]  # Take the first paragraph
+
+      return(data.frame(title = title, first_paragraph = paragraph, stringsAsFactors = FALSE))
+    }, error = function(e) {
+      # Print error message and retry if possible
+      message("Error in connection: ", e$message, " - Retrying (", i, "/", retries, ")")
+      Sys.sleep(2)  # Wait for 2 seconds before retrying
+    })
+  }
+  
+  # If all retries fail, return NULL
+  message("Failed to retrieve data after ", retries, " attempts.")
+  return(NULL)  # Return NULL if all retries fail
+}
+
+# Initialize an empty data frame to store the results
+all_data <- data.frame(title = character(), first_paragraph = character(), topic = character(), stringsAsFactors = FALSE)
+
+# Loop through each topic (Sports, Technology, History, Politics)
+for (topic in names(categories)) {
+  category_url <- categories[[topic]]
+  
+  # Get the URLs of the first 50 articles in this category
+  article_urls <- get_article_urls(category_url)
+  
+  # Scrape data from each article
+  for (url in article_urls) {
+    data <- get_wiki_data(url)
+    if (!is.null(data)) {
+      data$topic <- topic  # Add the topic label to the data
+      all_data <- rbind(all_data, data)
+    }
+    Sys.sleep(3)  # Wait for 3 seconds between requests to avoid rate limiting
+  }
+}
+
+# Save the data to a CSV file
+write.csv(all_data, "wiki_data.csv", row.names = FALSE)
+
+# Message when done
+message("Data scraping completed and saved to wiki_data.csv")
+
+
+
+
+```
+
+
+
